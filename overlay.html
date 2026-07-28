@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<style>
+html,body{
+  margin:0; padding:0;
+  width:100%; height:100%;
+  background:transparent;
+  overflow:hidden;
+}
+/* CONTENEDOR DE LA VISTA */
+#vista{
+  width:100vw; height:100vh;
+  overflow:hidden;
+  position:absolute;
+  left:0; top:0;
+}
+/* LIENZO REAL DEL EDITOR */
+#canvas{
+  position:absolute;
+  left:0; top:0;
+  width:1080px; height:1920px;
+  transform-origin:top left;
+  will-change: transform;
+}
+.box{
+  position:absolute;
+  overflow:hidden;
+}
+iframe{
+  position:absolute;
+  left:0; top:0;
+  border:none;
+  background:transparent;
+  pointer-events:none;
+  transform-origin:top left;
+  will-change: transform;
+}
+.texto-contenido{
+  width:100%;
+  height:100%;
+  background:#000;
+  color:#fff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  box-sizing:border-box;
+  padding:10px;
+  font-size:48px;
+  font-weight:bold;
+  word-break:break-word;
+  line-height:1.2;
+}
+</style>
+</head>
+<body>
+<div id="vista">
+  <div id="canvas">
+    <!-- Las cajas se generan dinámicamente desde Firebase -->
+  </div>
+</div>
+<script type="module">
+import { database, ref, get, onValue } from "./firebase.js";
+const canvas = document.getElementById("canvas");
+// ESCALA EL LIENZO COMPLETO COMO 9:16
+let resizePendiente = false;
+function ajustarCanvas(){
+  const escala = Math.min(
+    window.innerWidth / 1080,
+    window.innerHeight / 1920
+  );
+  canvas.style.transform = `scale(${escala})`;
+}
+window.addEventListener("resize", ()=>{
+  if(resizePendiente) return;
+  resizePendiente = true;
+  requestAnimationFrame(()=>{
+    ajustarCanvas();
+    resizePendiente = false;
+  });
+});
+ajustarCanvas();
+
+// CREA UNA CAJA DE IFRAME (widgets de Tikfinity, etc.)
+function crearBoxIframe(id, datos){
+  const box = document.createElement("div");
+  box.className = "box";
+  box.id = id;
+  box.style.left = datos.left;
+  box.style.top = datos.top;
+  box.style.width = datos.width;
+  box.style.height = datos.height;
+
+  const baseWidth = parseFloat(datos.baseWidth) || 400;
+  const baseHeight = parseFloat(datos.baseHeight) || 150;
+  const width = parseFloat(datos.width);
+  const height = parseFloat(datos.height);
+  const iframe = document.createElement("iframe");
+  iframe.src = datos.link;
+  iframe.style.width = baseWidth + "px";
+  iframe.style.height = baseHeight + "px";
+  iframe.style.transform = `scale(${width / baseWidth}, ${height / baseHeight})`;
+  box.appendChild(iframe);
+
+  canvas.appendChild(box);
+}
+
+// CREA UNA CAJA DE TEXTO Y ESCUCHA CAMBIOS EN TIEMPO REAL (fondo negro, letra blanca)
+function crearBoxTexto(id, datos){
+  const box = document.createElement("div");
+  box.className = "box";
+  box.id = id;
+  box.style.left = datos.left;
+  box.style.top = datos.top;
+  box.style.width = datos.width;
+  box.style.height = datos.height;
+
+  const contenido = document.createElement("div");
+  contenido.className = "texto-contenido";
+  contenido.textContent = datos.contenido || "";
+  box.appendChild(contenido);
+
+  canvas.appendChild(box);
+
+  // Escucha en tiempo real: apenas cambie el texto en Firebase, se actualiza aquí
+  onValue(ref(database, "textoLive/" + id), (snapshot)=>{
+    if(snapshot.exists()){
+      contenido.textContent = snapshot.val();
+    }
+  });
+}
+
+// CARGAR POSICIONES Y ENLACES DESDE FIREBASE
+async function iniciar(){
+  const snapshot = await get(ref(database, "diseño"));
+  if(snapshot.exists()){
+    const diseño = snapshot.val();
+    Object.keys(diseño).forEach(id=>{
+      const datos = diseño[id];
+      if(datos.tipo === "texto"){
+        crearBoxTexto(id, datos);
+      } else {
+        crearBoxIframe(id, datos);
+      }
+    });
+  }
+}
+iniciar();
+</script>
+</body>
+</html>
